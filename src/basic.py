@@ -14,12 +14,17 @@ class Error:
         self.details = details
     
     def tostring(self):
-        return f'{self.error_name} : {self.details}\nFile {self.pos_start.file}, line {self.pos_start.ln_no + 1}\n{self.pos_start.txt}\n{(self.pos_start.idx * " ")}^\n'
-    
+        res =  f'{self.error_name} : {self.details}\nFile {self.pos_start.file}, line {self.pos_start.ln_no + 1}\n{self.pos_start.txt}'
+        res += f'\n{(self.pos_start.idx * " ")}{"^" * (self.pos_end.idx - self.pos_start.idx)}\n'
+        return res
 
 class IllegalCharError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, 'IllegalCharError', details)
+
+class InvalidSyntaxError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, 'InvalidSyntaxError', details)
 
 #### POSITION
 
@@ -31,7 +36,7 @@ class Position:
         self.file = fl
         self.txt = txt
     
-    def advance(self, current_char):
+    def advance(self, current_char = None):
         self.idx += 1
         self.col += 1
 
@@ -46,24 +51,156 @@ class Position:
 
 ##### TOKENS #####
 
-RL_INT = 'RL_INT'
-RL_FLOAT = 'RL_FLOAT'
-RL_PLUS = 'RL_PLUS'
-RL_MINUS = 'RL_MINUS'
-RL_MUL = 'RL_MUL'
-RL_DIV = 'RL_DIV'
-RL_LPAREN = 'RL_LPAREN'
-RL_RPAREN = 'RL_RPAREN'
+RL_INT = 'INT'
+RL_FLOAT = 'FLOAT'
+RL_PLUS = 'PLUS'
+RL_MINUS = 'MINUS'
+RL_MUL = 'MUL'
+RL_DIV = 'DIV'
+RL_LPAREN = 'LPAREN'
+RL_RPAREN = 'RPAREN'
+RL_EOF = 'EOF'
 
 class Token:
-    def __init__(self, type_, value = None):
+    def __init__(self, type_, value = None, pos_start = None, pos_end = None):
         self.type = type_
         self.value = value
+
+        if pos_start:
+            self.pos_start = pos_start.copy()
+            self.pos_end = pos_start.copy()
+            self.pos_end.advance()
+        
+        if pos_end:
+            self.pos_end = pos_end
 
     def __repr__(self):
         if self.value:
             return f'{self.type} : {self.value}'
         return f'{self.type}'
+
+#### NODES ####
+
+class NumberNode:
+    def __init__(self, token):
+        self.token = token
+    
+    def __repr__(self):
+        return f'{self.token}'
+    
+
+class BinOpNode:
+    def __init__(self, left_node, op_tok, right_node):
+        self.left_node = left_node
+        self.op_tok = op_tok
+        self.right_node = right_node
+
+    def __repr__(self):
+        return f'({self.left_node}, {self.op_tok}, {self.right_node})'
+    
+class UnaryOpNode:
+    def __init__(self, op_tok, node):
+        self.op_tok = op_tok
+        self.node = node
+    
+    def __repr__(self):
+        return f'({self.op_tok}{self.node})'
+
+
+#### PARSER #####
+class ParseResult:
+    def __init__(self):
+        self.error = None
+        self.node = None
+
+    def register(self, res):
+        if isinstance(res, ParseResult):
+            if res.error:
+                self.error = res.error
+            return res.node
+        return res 
+
+    def success(self, node):
+        self.node = node
+        return self
+    
+    def failure(self, error):
+        self.error = error
+        return self
+
+
+class Parser:
+    def __init__(self, tokens):
+        self.tokens = tokens
+        self.tok_idx = -1
+        self.advance()
+    
+    def advance(self):
+        self.tok_idx += 1
+        if self.tok_idx < len(self.tokens):
+            self.cur_tok = self.tokens[self.tok_idx]
+        
+        return self.cur_tok
+    
+    def parse(self):
+        res = self.expr()
+        if not res.error and self.cur_tok.type != RL_EOF:
+            return res.failure(InvalidSyntaxError(self.cur_tok.pos_start, self.cur_tok.pos_end, "Expected '+' , '-', '*', '/' "))
+        return res
+    
+    def factor(self):
+        tok = self.cur_tok
+        res = ParseResult()
+
+        if tok.type in (RL_PLUS, RL_MINUS):
+            res.register(self.advance())
+            factor = res.register(self.factor())
+            if res.error:
+                return res
+            return res.success(UnaryOpNode(tok, factor))
+
+        elif tok.type == RL_LPAREN:
+            res.register(self.advance())
+            expr = res.register(self.expr())
+            if res.error:
+                return res
+            if self.cur_tok.type == RL_RPAREN:
+                res.register(self.advance())
+                return res.success(expr)
+            else:
+                return res.failure(InvalidSyntaxError(self.cur_tok.pos_start, self.cur_tok.pos_end, "Expected ')'"))
+        elif tok.type in (RL_INT, RL_FLOAT):
+            res.register(self.advance())
+            return res.success(NumberNode(tok))
+        
+        return res.failure(InvalidSyntaxError(tok.pos_start, tok.pos_end, 'Expected INT or FLOAT'))
+
+    def term(self):
+        return self.bin_op(self.factor, (RL_MUL, RL_DIV))
+
+    def expr(self):
+        return self.bin_op(self.term, (RL_PLUS, RL_MINUS))
+        
+    
+    def bin_op(self, fn, type):
+        res = ParseResult()
+        left = res.register(fn())
+
+        if res.error:
+            return res
+
+        while self.cur_tok.type in type:
+            op_tok = self.cur_tok
+            res.register(self.advance())
+            right = res.register(fn())
+            if res.error:
+                return res
+            left = BinOpNode(left, op_tok, right)
+        
+        return res.success(left)
+
+
+
 
 
 #### REILANG ###
@@ -83,7 +220,6 @@ class ReiLang:
     def make_tokens(self):
         tokens = []
         pos_start = None
-        isError = 0
 
         while self.current_char != None:
             if self.current_char in IGNORE_CHARS:
@@ -91,37 +227,36 @@ class ReiLang:
             elif self.current_char in DIGITS:
                 tokens.append(self.make_number())
             elif self.current_char == '+':
-                tokens.append(Token(RL_PLUS))
+                tokens.append(Token(RL_PLUS, pos_start = pos_start))
                 self.advance()
             elif self.current_char == '-':
-                tokens.append(Token(RL_MINUS))
+                tokens.append(Token(RL_MINUS, pos_start = pos_start))
                 self.advance()
             elif self.current_char == '*':
-                tokens.append(Token(RL_MUL))
+                tokens.append(Token(RL_MUL, pos_start = pos_start))
                 self.advance()
             elif self.current_char == '/':
-                tokens.append(Token(RL_DIV))
+                tokens.append(Token(RL_DIV, pos_start = pos_start))
                 self.advance()
             elif self.current_char == '(':
-                tokens.append(Token(RL_LPAREN))
+                tokens.append(Token(RL_LPAREN, pos_start = pos_start))
                 self.advance()
             elif self.current_char == ')':
-                tokens.append(Token(RL_RPAREN))
+                tokens.append(Token(RL_RPAREN, pos_start = pos_start))
                 self.advance()
             else:
-                isError = 1
                 char = self.current_char
-                if pos_start == None:
-                    pos_start = self.pos.copy()
+                pos_start = self.pos.copy()
                 self.advance()
+                return [], IllegalCharError(pos_start, self.pos, f"'{char}'")
         
-        if isError == 1:
-            return [], IllegalCharError(pos_start, self.pos, f"'{char}'")
+        tokens.append(Token(RL_EOF, pos_start=self.pos))
         return tokens, None
 
     def make_number(self):
         numb_str = ''
         dot_count = 0
+        pos_start = self.pos.copy()
 
         while self.current_char != None and self.current_char in DIGITS + '.':
             if self.current_char == '.':
@@ -134,7 +269,7 @@ class ReiLang:
             self.advance()
 
         if dot_count == 0:
-            return Token(RL_INT, int(numb_str))
+            return Token(RL_INT, int(numb_str), pos_start=pos_start, pos_end=self.pos)
         elif dot_count == 1:
             return Token(RL_FLOAT, float(numb_str))
         
@@ -145,5 +280,9 @@ def run(text, fl):
     reilang = ReiLang(text, fl)
     tokens, error = reilang.make_tokens()
 
+    if error:
+        return None, error
 
-    return tokens, error
+    expr = Parser(tokens).parse()
+
+    return expr.node, expr.error

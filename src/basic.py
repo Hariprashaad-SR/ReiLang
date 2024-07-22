@@ -83,10 +83,12 @@ class Token:
 
 class NumberNode:
     def __init__(self, token):
-        self.token = token
+        self.tok = token
+        self.pos_start = self.tok.pos_start
+        self.pos_end = self.tok.pos_end
     
     def __repr__(self):
-        return f'{self.token}'
+        return f'{self.tok}'
     
 
 class BinOpNode:
@@ -94,6 +96,8 @@ class BinOpNode:
         self.left_node = left_node
         self.op_tok = op_tok
         self.right_node = right_node
+        self.pos_start = self.left_node.pos_start
+        self.pos_end = self.right_node.pos_end
 
     def __repr__(self):
         return f'({self.left_node}, {self.op_tok}, {self.right_node})'
@@ -102,6 +106,8 @@ class UnaryOpNode:
     def __init__(self, op_tok, node):
         self.op_tok = op_tok
         self.node = node
+        self.pos_start = self.op_tok.pos_start
+        self.pos_end = self.node.pos_end
     
     def __repr__(self):
         return f'({self.op_tok}{self.node})'
@@ -272,7 +278,84 @@ class ReiLang:
             return Token(RL_INT, int(numb_str), pos_start=pos_start, pos_end=self.pos)
         elif dot_count == 1:
             return Token(RL_FLOAT, float(numb_str))
+
+#### NUMBER NODE  ####
+class Number:
+    def __init__(self, value):
+        self.value = value
+    
+    def set_pos(self, pos_start = None, pos_end = None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+        return self
+    
+    def add_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value + other.value)
+    
+    def sub_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value - other.value)
         
+    def mul_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value * other.value)
+        
+    def div_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value / other.value)
+        
+    # def added_to(self, other):
+    #     if isinstance(other, Number):
+    #         return Number(self.value + other.value)
+        
+    # def added_to(self, other):
+    #     if isinstance(other, Number):
+    #         return Number(self.value + other.value)
+
+    def __repr__(self):
+        return str(self.value)
+
+#### INTERPRETER ####
+class Interpreter:
+    def visit(self, node):
+        method_name = f'visit_{type(node).__name__}'
+        method = getattr(self, method_name, self.no_visit_method)
+        return method(node)
+
+    def no_visit_method(self, node):
+        raise Exception(f'No visit_{type(node).__name__} method defined')
+    
+    def visit_NumberNode(self, node):
+        return Number(node.tok.value).set_pos(node.pos_start, node.pos_end)
+    
+    def visit_BinOpNode(self, node):
+        left = self.visit(node.left_node)
+        right = self.visit(node.right_node)
+        result = Number(0)
+
+        if node.op_tok.type == RL_PLUS:
+            result = left.add_by(right)
+        
+        elif node.op_tok.type == RL_MINUS:
+            result = left.sub_by(right)
+        
+        elif node.op_tok.type == RL_MUL:
+            result = left.mul_by(right)
+
+        elif node.op_tok.type == RL_DIV:
+            result = left.div_by(right)
+
+        return result.set_pos(node.pos_start, node.pos_end)
+    
+    def visit_UnaryOpNode(self, node):
+        number = self.visit(node.node)
+
+        if node.op_tok.type == RL_MINUS:
+            number = number.mul_by(Number(-1))
+
+        return number.set_pos(node.pos_start, node.pos_end)
 
 #### RUN ####
 
@@ -285,4 +368,10 @@ def run(text, fl):
 
     expr = Parser(tokens).parse()
 
-    return expr.node, expr.error
+    if expr.error:
+        return None, expr.error
+    
+    interpreter = Interpreter()
+    val = interpreter.visit(expr.node)
+
+    return val, None

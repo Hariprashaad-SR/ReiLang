@@ -1,30 +1,6 @@
-#### CONSTANTS ####
-
-DIGITS = '0123456789'
-IGNORE_CHARS = ['\t', '\n', ' ']
-
-
-#### ERROR ####
-
-class Error:
-    def __init__(self,pos_start, pos_end, error_name, details):
-        self.pos_start = pos_start
-        self.pos_end = pos_end
-        self.error_name = error_name
-        self.details = details
-    
-    def tostring(self):
-        res =  f'{self.error_name} : {self.details}\nFile {self.pos_start.file}, line {self.pos_start.ln_no + 1}\n{self.pos_start.txt}'
-        res += f'\n{(self.pos_start.idx * " ")}{"^" * (self.pos_end.idx - self.pos_start.idx)}\n'
-        return res
-
-class IllegalCharError(Error):
-    def __init__(self, pos_start, pos_end, details):
-        super().__init__(pos_start, pos_end, 'IllegalCharError', details)
-
-class InvalidSyntaxError(Error):
-    def __init__(self, pos_start, pos_end, details):
-        super().__init__(pos_start, pos_end, 'InvalidSyntaxError', details)
+from errors import InvalidSyntaxError, IllegalCharError
+from globals import *
+from nodes import UnaryOpNode, BinOpNode, NumberNode
 
 #### POSITION
 
@@ -49,17 +25,6 @@ class Position:
     def copy(self):
         return Position(self.idx, self.ln_no, self.col, self.file, self.txt)
 
-##### TOKENS #####
-
-RL_INT = 'INT'
-RL_FLOAT = 'FLOAT'
-RL_PLUS = 'PLUS'
-RL_MINUS = 'MINUS'
-RL_MUL = 'MUL'
-RL_DIV = 'DIV'
-RL_LPAREN = 'LPAREN'
-RL_RPAREN = 'RPAREN'
-RL_EOF = 'EOF'
 
 class Token:
     def __init__(self, type_, value = None, pos_start = None, pos_end = None):
@@ -78,39 +43,6 @@ class Token:
         if self.value:
             return f'{self.type} : {self.value}'
         return f'{self.type}'
-
-#### NODES ####
-
-class NumberNode:
-    def __init__(self, token):
-        self.tok = token
-        self.pos_start = self.tok.pos_start
-        self.pos_end = self.tok.pos_end
-    
-    def __repr__(self):
-        return f'{self.tok}'
-    
-
-class BinOpNode:
-    def __init__(self, left_node, op_tok, right_node):
-        self.left_node = left_node
-        self.op_tok = op_tok
-        self.right_node = right_node
-        self.pos_start = self.left_node.pos_start
-        self.pos_end = self.right_node.pos_end
-
-    def __repr__(self):
-        return f'({self.left_node}, {self.op_tok}, {self.right_node})'
-    
-class UnaryOpNode:
-    def __init__(self, op_tok, node):
-        self.op_tok = op_tok
-        self.node = node
-        self.pos_start = self.op_tok.pos_start
-        self.pos_end = self.node.pos_end
-    
-    def __repr__(self):
-        return f'({self.op_tok}{self.node})'
 
 
 #### PARSER #####

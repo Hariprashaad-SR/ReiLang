@@ -1,0 +1,17 @@
+#### CONSTANTS ####
+
+DIGITS = '0123456789'
+IGNORE_CHARS = ['\t', '\n', ' ']
+
+
+##### TOKENS #####
+
+RL_INT = 'INT'
+RL_FLOAT = 'FLOAT'
+RL_PLUS = 'PLUS'
+RL_MINUS = 'MINUS'
+RL_MUL = 'MUL'
+RL_DIV = 'DIV'
+RL_LPAREN = 'LPAREN'
+RL_RPAREN = 'RPAREN'
+RL_EOF = 'EOF'
